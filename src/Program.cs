@@ -11,28 +11,56 @@ namespace AzureBlobStorageForeach
                 //.AddJsonFile("appsettings.json")
                 .AddUserSecrets<Program>()
                 .Build();
+            
+            var blobStorageClient = GetBlobStorageClient(config);
+            
+            var sqlClient = GetSqlClient(config);
+            var attachments = sqlClient.ReadAttachements();
 
-            var connectionString = config.GetConnectionString("BlobStorage");
+            Console.WriteLine("Starting properties update...");
+
+            IEnumerable<string> containerNames = await blobStorageClient.ListContainersAsync();
+            foreach (var containerName in containerNames.Where(c => c.EndsWith("-attachments")))
+            {
+                var blobs = await blobStorageClient.ListBlobsInContainerAsync(containerName);
+                foreach (var blob in blobs.Skip(300))
+                {
+                    string targetFilename = LookupFilenameByBlobName(attachments, blob);
+                    await blobStorageClient.SetBlobPropertiesAsync(containerName, blob, targetFilename);
+                }
+            }
+
+            Console.WriteLine("Process finished.");
+        }
+
+        private static string LookupFilenameByBlobName(IEnumerable<AttachmentDTO> attachments, string blob)
+        {
+            var correspondingAttachmentRecord = attachments.FirstOrDefault(a => a.AzureStorageBlobName == blob);
+            var targetFilename = correspondingAttachmentRecord?.TargetFilename ?? string.Empty;
+            return targetFilename;
+        }
+
+        private static BlobStorageClient GetBlobStorageClient(IConfigurationRoot config)
+        {
+            var connectionString = config.GetConnectionString("BlobStorageProd");
             if (string.IsNullOrEmpty(connectionString))
             {
                 throw new Exception("BlobStorage connection string is empty.");
             }
 
             var blobStorageClient = new BlobStorageClient(connectionString);
+            return blobStorageClient;
+        }
 
-            Console.WriteLine("Starting properties update...");
-
-            IEnumerable<string> containerNames = await blobStorageClient.ListContainersAsync();
-            foreach (var containerName in containerNames)
+        private static SqlClient GetSqlClient(IConfigurationRoot config)
+        {
+            var connectionString = config.GetConnectionString("SQLServerProd");
+            if (string.IsNullOrEmpty(connectionString))
             {
-                var blobs = await blobStorageClient.ListBlobsInContainerAsync(containerName);
-                foreach (var blob in blobs)
-                {
-                    await blobStorageClient.SetBlobPropertiesAsync(containerName, blob);
-                }
+                throw new Exception("BlobStorage connection string is empty.");
             }
 
-            Console.WriteLine("Process finished.");
+            return new SqlClient(connectionString);
         }
     }
 }

@@ -39,21 +39,31 @@ namespace AzureBlobStorageForeach
             return blobNames;
         }
 
-        public async Task SetBlobPropertiesAsync(string containerName, string blobName)
+        public async Task SetBlobPropertiesAsync(string containerName, string blobName, string targetFilename)
         {
+            var isAttachment = containerName.EndsWith("-attachments");
+            if (!isAttachment)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(targetFilename)) {
+                Console.WriteLine($"[{containerName}/{blobName}] ATTACHMENTNOTFOUND Attachment was not found in Attachments table.");
+                return;
+            }
+
             var blobContainerClient = _blobServiceClient.GetBlobContainerClient(containerName);
             var blobClient = blobContainerClient.GetBlobClient(blobName);
 
-            var isAttachment = containerName.EndsWith("-attachments");
 
             try
             {
                 // Get the existing properties
                 var properties = await blobClient.GetPropertiesAsync();
-                var filename = Utils.RemoveLeadingGuids(blobName);
-                var contentDisposition = Utils.GenerateContentDispositionHeader(filename, isAttachment);
+                var contentDisposition = Utils.GenerateContentDispositionHeader(targetFilename, isAttachment);
 
-                if (properties.Value.ContentDisposition  != contentDisposition) { 
+                if (properties.Value.ContentDisposition != contentDisposition)
+                {
                     var headers = new BlobHttpHeaders
                     {
                         // Populate headers with 
@@ -66,8 +76,13 @@ namespace AzureBlobStorageForeach
                         ContentHash = properties.Value.ContentHash
                     };
                     var response = await blobClient.SetHttpHeadersAsync(headers);
-                    Console.WriteLine($"[{containerName}/{filename}] Updated ContentDisposition={contentDisposition}");
+                    Console.WriteLine($"[{containerName}/{blobName}] UPDATEDCONTENTDISPOSITION {contentDisposition}");
                 }
+                else
+                {
+                    Console.WriteLine($"[{containerName}/{blobName}] OKCONTENTDISPOSITION");
+                }
+
 
             }
             catch (Exception e)

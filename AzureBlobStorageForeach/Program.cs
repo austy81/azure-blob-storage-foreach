@@ -18,7 +18,6 @@ namespace AzureBlobStorageForeach
                 throw new Exception("BlobStorage connection string is empty.");
             }
 
-            // Replace "your_connection_string" with your actual Azure Blob Storage connection string
             var blobStorageClient = new BlobStorageClient(connectionString);
 
             Console.WriteLine("Starting properties update...");

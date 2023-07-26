@@ -69,11 +69,9 @@ namespace AzureBlobStorageForeach
                     Console.WriteLine($"[{containerName}/{filename}] Updated ContentDisposition={contentDisposition}");
                 }
 
-                // Set the blob's properties.
             }
             catch (Exception e)
             {
-                //Console.WriteLine($"HTTP error code {e.Status}: {e.ErrorCode}");
                 Console.WriteLine(e.Message);
                 Console.ReadLine();
             }

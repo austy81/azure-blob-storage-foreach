@@ -11,4 +11,4 @@ To connect to your blob storage, create secrets.json in fillowing format:
 }
 `
 
-More info on secrets to be found (here)[https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets?view=aspnetcore-7.0&tabs=windows].
+More info on secrets to be found [here](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets?view=aspnetcore-7.0&tabs=windows).

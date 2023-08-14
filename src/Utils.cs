@@ -69,5 +69,11 @@ namespace AzureBlobStorageForeach
 
             return sb.ToString();
         }
+
+        public static string SanitizeJsonString(string input)
+        {
+            // Replace non breaking white space with regular space
+            return input.Replace('\u00A0', ' ');
+        }
     }
 }

@@ -1,4 +1,7 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using AzureBlobStorageForeach.DTOs;
+using Microsoft.Extensions.Configuration;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace AzureBlobStorageForeach
 {
@@ -11,11 +14,53 @@ namespace AzureBlobStorageForeach
                 //.AddJsonFile("appsettings.json")
                 .AddUserSecrets<Program>()
                 .Build();
-            
-            var blobStorageClient = GetBlobStorageClient(config);
-            
+
+            //await RunBlobContainerUpdate(config);
+
             var sqlClient = GetSqlClient(config);
-            var attachments = sqlClient.ReadAttachements();
+            AuditCustomData(config, await sqlClient.ReadCustomDataTenant("Orders"), "Orders");
+            AuditCustomData(config, await sqlClient.ReadCustomDataTenant("ServiceObjects"), "ServiceObjects");
+            AuditCustomData(config, await sqlClient.ReadCustomDataTenant("Customers"), "Customers");
+        }
+
+        private static void AuditCustomData(IConfigurationRoot config, IEnumerable<CustomDataTenant>? entityList, string auditedObject)
+        {
+            if (entityList == null)
+            {
+                return;
+            }
+
+            var tenantErrors = new List<string>();
+            Console.WriteLine($"Processing object: {auditedObject}. Total rows: {entityList.Count()}");
+            foreach (var order in entityList)
+            {
+                if (!string.IsNullOrEmpty(order.CustomDataString))
+                {
+                    try
+                    {
+                        //var cleanedCustomDataString = Utils.SanitizeJsonString(order.CustomDataString);
+                        var cleanedCustomDataString = order.CustomDataString;
+                        var customDataObject = JsonDocument.Parse(cleanedCustomDataString);
+                    }
+                    catch (Exception e)
+                    {
+                        tenantErrors.Add($"{order.TenantCode} - {e.Message}");
+                    }
+                }
+            }
+            var errors = tenantErrors.Count();
+            Console.WriteLine($"Total errors: {errors}");
+            var distinctTenants = tenantErrors.Distinct().ToList();
+            foreach ( var tenant in distinctTenants)
+                Console.WriteLine($"{auditedObject} tenants with error: {tenant}");
+        }
+
+        private static async Task RunBlobContainerUpdate(IConfigurationRoot config)
+        {
+            var blobStorageClient = GetBlobStorageClient(config);
+
+            var sqlClient = GetSqlClient(config);
+            var attachments = await sqlClient.ReadAttachements();
 
             Console.WriteLine("Starting properties update...");
 
@@ -29,11 +74,9 @@ namespace AzureBlobStorageForeach
                     await blobStorageClient.SetBlobPropertiesAsync(containerName, blob, targetFilename);
                 }
             }
-
-            Console.WriteLine("Process finished.");
         }
 
-        private static string LookupFilenameByBlobName(IEnumerable<AttachmentDTO> attachments, string blob)
+        private static string LookupFilenameByBlobName(IEnumerable<Attachment> attachments, string blob)
         {
             var correspondingAttachmentRecord = attachments.FirstOrDefault(a => a.AzureStorageBlobName == blob);
             var targetFilename = correspondingAttachmentRecord?.TargetFilename ?? string.Empty;
@@ -55,9 +98,10 @@ namespace AzureBlobStorageForeach
         private static SqlClient GetSqlClient(IConfigurationRoot config)
         {
             var connectionString = config.GetConnectionString("SQLServerProd");
+            //var connectionString = config.GetConnectionString("SQLServer");
             if (string.IsNullOrEmpty(connectionString))
             {
-                throw new Exception("BlobStorage connection string is empty.");
+                throw new Exception("SQLServer connection string is empty.");
             }
 
             return new SqlClient(connectionString);

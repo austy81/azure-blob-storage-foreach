@@ -1,12 +1,28 @@
-﻿using AzureBlobStorageForeach.DTOs;
+﻿//SELECT sum(SizeBytes)/1000000000 as SizeGB, count(*) NumberOfFiles, TenantCode
+//FROM [dbo].[Attachments] a
+//join [dbo].Companies c on a.CompanyId = c.Id
+//group by TenantCode
+//order by sum(SizeBytes) desc
+
+//SELECT 
+//    SUM(CASE WHEN SizeBytes > 0 THEN 1 ELSE 0 END) AS CountGreaterThanZero,
+//    SUM(CASE WHEN SizeBytes = 0 THEN 1 ELSE 0 END) AS CountEqualsZero,
+//    COUNT(*) AS TotalRecords,
+//    100.0 * SUM(CASE WHEN SizeBytes > 0 THEN 1 ELSE 0 END) / COUNT(*) AS PercentageGreaterThanZero,
+//    100.0 * SUM(CASE WHEN SizeBytes = 0 THEN 1 ELSE 0 END) / COUNT(*) AS PercentageEqualsZero
+//FROM Attachments;
+
+
+using AzureBlobStorageForeach.DTOs;
 using Microsoft.Extensions.Configuration;
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace AzureBlobStorageForeach
 {
     internal class Program
     {
+        private const string attachmentsContainerSuffix = "-attachments";
+
         static async Task Main(string[] args)
         {
             var config = new ConfigurationBuilder()
@@ -15,12 +31,14 @@ namespace AzureBlobStorageForeach
                 .AddUserSecrets<Program>()
                 .Build();
 
+            await UpdateAttachmentsSize(config);
+
             //await RunBlobContainerUpdate(config);
 
-            var sqlClient = GetSqlClient(config);
-            AuditCustomData(config, await sqlClient.ReadCustomDataTenant("Orders"), "Orders");
-            AuditCustomData(config, await sqlClient.ReadCustomDataTenant("ServiceObjects"), "ServiceObjects");
-            AuditCustomData(config, await sqlClient.ReadCustomDataTenant("Customers"), "Customers");
+            //var sqlClient = GetSqlClient(config);
+            //AuditCustomData(config, await sqlClient.ReadCustomDataTenant("Orders"), "Orders");
+            //AuditCustomData(config, await sqlClient.ReadCustomDataTenant("ServiceObjects"), "ServiceObjects");
+            //AuditCustomData(config, await sqlClient.ReadCustomDataTenant("Customers"), "Customers");
         }
 
         private static void AuditCustomData(IConfigurationRoot config, IEnumerable<CustomDataTenant>? entityList, string auditedObject)
@@ -55,6 +73,54 @@ namespace AzureBlobStorageForeach
                 Console.WriteLine($"{auditedObject} tenants with error: {tenant}");
         }
 
+        private static async Task UpdateAttachmentsSize(IConfigurationRoot config, string startAfterTenant = "gnhromosvody")
+        {
+            var blobStorageClient = GetBlobStorageClient(config);
+
+            IEnumerable<string> containerNames = await blobStorageClient.ListContainersAsync();
+            List<string> attachmentContainers = [.. containerNames.Where(x => x.EndsWith(attachmentsContainerSuffix)).OrderBy(x => x)];
+            Console.WriteLine($"Loaded {attachmentContainers.Count()} containers.");
+            Console.WriteLine($"First 10 containers: {string.Join(", ", attachmentContainers.Take(10))}...");
+
+            var sqlClient = GetSqlClient(config);
+
+            foreach (var containerName in attachmentContainers)
+            {
+                var tenantCode = containerName.Split("-")[1];
+                if (startAfterTenant != string.Empty)
+                {
+                    if (startAfterTenant == tenantCode)
+                    {
+                        startAfterTenant = string.Empty;
+                        continue;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+
+                var blobs = await blobStorageClient.ListBlobsInContainerAsync(containerName);
+                var position = 0;
+                foreach (var blob in blobs)
+                {
+                    position++;
+
+                    var contentHash = Convert.ToBase64String(blob.Properties.ContentHash);
+                    var contentLength = blob.Properties.ContentLength;
+                    var internalStorageId = blob.Name;
+
+                    //var updatedRecords = sqlClient.UpdateAttachmentSize(tenantCode, internalStorageId, contentHash, contentLength);
+                    var updatedRecords = await sqlClient.UpdateAttachmentSizeAsync(tenantCode, internalStorageId, contentHash, contentLength);
+                    if (updatedRecords < 1)
+                    {
+                        Console.WriteLine($"ERROR in Tenant:{tenantCode,-15} RECORDS:{updatedRecords} LEN:{contentLength,-10} HASH:{contentHash} NAME:{internalStorageId}");
+                    }
+                    Console.WriteLine($"{containerName} {position,10}/{blobs.Count(),-10}");
+                }
+            }
+        }
+
         private static async Task RunBlobContainerUpdate(IConfigurationRoot config)
         {
             var blobStorageClient = GetBlobStorageClient(config);
@@ -65,13 +131,13 @@ namespace AzureBlobStorageForeach
             Console.WriteLine("Starting properties update...");
 
             IEnumerable<string> containerNames = await blobStorageClient.ListContainersAsync();
-            foreach (var containerName in containerNames.Where(c => c.EndsWith("-attachments")))
+            foreach (var containerName in containerNames.Where(c => c.EndsWith(attachmentsContainerSuffix)))
             {
                 var blobs = await blobStorageClient.ListBlobsInContainerAsync(containerName);
                 foreach (var blob in blobs.Skip(300))
                 {
-                    string targetFilename = LookupFilenameByBlobName(attachments, blob);
-                    await blobStorageClient.SetBlobPropertiesAsync(containerName, blob, targetFilename);
+                    string targetFilename = LookupFilenameByBlobName(attachments, blob.Name);
+                    await blobStorageClient.SetBlobPropertiesAsync(containerName, blob.Name, targetFilename);
                 }
             }
         }

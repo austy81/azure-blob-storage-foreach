@@ -26,14 +26,14 @@ namespace AzureBlobStorageForeach
             return containerNames;
         }
 
-        public async Task<IEnumerable<string>> ListBlobsInContainerAsync(string containerName)
+        public async Task<IEnumerable<BlobItem>> ListBlobsInContainerAsync(string containerName)
         {
-            List<string> blobNames = new List<string>();
+            var blobNames = new List<BlobItem>();
 
             var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
             await foreach (var blobItem in containerClient.GetBlobsAsync())
             {
-                blobNames.Add(blobItem.Name);
+                blobNames.Add(blobItem);
             }
 
             return blobNames;

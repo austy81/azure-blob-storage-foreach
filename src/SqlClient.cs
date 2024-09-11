@@ -71,5 +71,32 @@ join [dbo].Companies c on a.CompanyId = c.Id
             return orders;
         }
 
+        internal async Task<int> UpdateAttachmentSizeAsync(string tenantCode, string internalStorageId, string contentHash, long? contentLength)
+        {
+            var cmd = @"
+            update Attachments 
+            set 
+                MD5Hash = @contentHash,
+                SizeBytes = @contentLength
+            from
+                Attachments a
+                join Companies c on a.CompanyId = c.Id
+            where 
+                a.InternalStorageId COLLATE Latin1_General_CI_AI = @internalStorageId
+                and c.TenantCode = @tenantCode
+            ";
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                SqlCommand command = new SqlCommand(cmd, connection);
+                command.Parameters.AddWithValue("@contentHash", contentHash);
+                command.Parameters.AddWithValue("@contentLength", contentLength.HasValue ? contentLength.Value : (object)DBNull.Value);
+                command.Parameters.AddWithValue("@internalStorageId", internalStorageId);
+                command.Parameters.AddWithValue("@tenantCode", tenantCode);
+
+                await connection.OpenAsync();
+                return await command.ExecuteNonQueryAsync();
+            }
+        }
     }
 }

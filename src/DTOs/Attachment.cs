@@ -2,6 +2,7 @@
 {
     public record Attachment(bool IsDeleted)
     {
+        public Guid Id { get; set; }
         public string AzureStorageBlobName { get; set; } = string.Empty;
         public string FileName { get; set; } = string.Empty;
         public string TenantCode { get; set; } = string.Empty;

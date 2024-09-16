@@ -31,7 +31,9 @@ namespace AzureBlobStorageForeach
                 .AddUserSecrets<Program>()
                 .Build();
 
-            await UpdateAttachmentsSize(config);
+            await PrintNotExistingDBAttachments(config);
+
+            //await UpdateAttachmentsSize(config);
 
             //await RunBlobContainerUpdate(config);
 
@@ -73,7 +75,7 @@ namespace AzureBlobStorageForeach
                 Console.WriteLine($"{auditedObject} tenants with error: {tenant}");
         }
 
-        private static async Task UpdateAttachmentsSize(IConfigurationRoot config, string startAfterTenant = "gnhromosvody")
+        private static async Task UpdateAttachmentsSize(IConfigurationRoot config, string processTenant = "schlieger")
         {
             var blobStorageClient = GetBlobStorageClient(config);
 
@@ -87,20 +89,14 @@ namespace AzureBlobStorageForeach
             foreach (var containerName in attachmentContainers)
             {
                 var tenantCode = containerName.Split("-")[1];
-                if (startAfterTenant != string.Empty)
+                if (processTenant != tenantCode)
                 {
-                    if (startAfterTenant == tenantCode)
-                    {
-                        startAfterTenant = string.Empty;
-                        continue;
-                    }
-                    else
-                    {
-                        continue;
-                    }
+                    continue;
                 }
+                Console.WriteLine($"Starting {tenantCode}...");
 
                 var blobs = await blobStorageClient.ListBlobsInContainerAsync(containerName);
+                var dbAttachments = await sqlClient.ReadAttachements(tenantCode);
                 var position = 0;
                 foreach (var blob in blobs)
                 {
@@ -110,23 +106,69 @@ namespace AzureBlobStorageForeach
                     var contentLength = blob.Properties.ContentLength;
                     var internalStorageId = blob.Name;
 
-                    //var updatedRecords = sqlClient.UpdateAttachmentSize(tenantCode, internalStorageId, contentHash, contentLength);
-                    var updatedRecords = await sqlClient.UpdateAttachmentSizeAsync(tenantCode, internalStorageId, contentHash, contentLength);
-                    if (updatedRecords < 1)
+                    var attToUpdate = dbAttachments.FirstOrDefault(x => x.AzureStorageBlobName == blob.Name);
+
+                    if (attToUpdate != null)
                     {
-                        Console.WriteLine($"ERROR in Tenant:{tenantCode,-15} RECORDS:{updatedRecords} LEN:{contentLength,-10} HASH:{contentHash} NAME:{internalStorageId}");
+                        var updatedRecords = await sqlClient.UpdateAttachmentSizeByIdAsync(attToUpdate.Id, contentHash, contentLength);
+                        if (updatedRecords < 1)
+                        {
+                            Console.WriteLine($"ERROR in Tenant:{tenantCode,-15} RECORDS:{updatedRecords} LEN:{contentLength,-10} HASH:{contentHash} NAME:{internalStorageId}");
+                        }
+                        Console.WriteLine($"{containerName} {position,10}/{blobs.Count(),-10}");
                     }
-                    Console.WriteLine($"{containerName} {position,10}/{blobs.Count(),-10}");
+                    else
+                    {
+                        Console.WriteLine($"Attachment {blob.Name} in tenant {tenantCode} was not found in DB.");
+                    }
                 }
             }
         }
 
-        private static async Task RunBlobContainerUpdate(IConfigurationRoot config)
+        private static async Task PrintNotExistingDBAttachments(IConfigurationRoot config, string processTenant = "")
+        {
+            var blobStorageClient = GetBlobStorageClient(config);
+
+            IEnumerable<string> containerNames = await blobStorageClient.ListContainersAsync();
+            List<string> attachmentContainers = [.. containerNames.Where(x => x.EndsWith(attachmentsContainerSuffix)).OrderBy(x => x)];
+            Console.WriteLine($"Loaded {attachmentContainers.Count()} containers.");
+
+            var sqlClient = GetSqlClient(config);
+
+            foreach (var containerName in attachmentContainers)
+            {
+                var tenantCode = containerName.Split("-")[1];
+                if (processTenant != string.Empty && processTenant != tenantCode)
+                {
+                    continue;
+                }
+
+                var blobs = await blobStorageClient.ListBlobsInContainerAsync(containerName);
+                var dbAttachments = await sqlClient.ReadAttachements(tenantCode);
+                var position = 0;
+                var nonExisting = 0;
+                foreach (var blob in blobs)
+                {
+                    position++;
+
+                    var dbRecordFound = dbAttachments.Any(x => x.AzureStorageBlobName == blob.Name);
+
+                    if (!dbRecordFound)
+                    {
+                        nonExisting++;
+                    }
+                }
+                Console.WriteLine($"Tenant {tenantCode} has {nonExisting}/{position} attachments in Blob Storage with no record in DB.");
+            }
+        }
+
+
+        private static async Task RunBlobContainerUpdate(IConfigurationRoot config, string tenantCode)
         {
             var blobStorageClient = GetBlobStorageClient(config);
 
             var sqlClient = GetSqlClient(config);
-            var attachments = await sqlClient.ReadAttachements();
+            var attachments = await sqlClient.ReadAttachements(tenantCode);
 
             Console.WriteLine("Starting properties update...");
 

@@ -116,6 +116,143 @@ WHERE c.TenantCode = '{tenantCode}'
             return await command.ExecuteNonQueryAsync();
         }
 
+        internal async Task<int> UpdateServiceObjectAsync(ServiceObject serviceObject)
+        {
+            if (serviceObject == null)
+                return 0;
+
+            var cmd = @"
+            update ServiceObjects 
+            set 
+                Name = @contentName,
+                IdentificationNumber = @contentIdentificationNumber,
+                NextRevisionPeriodInMonths = @contentNRPM,
+                Description = @contentDescription
+            from
+                ServiceObjects s
+            where 
+                s.Id = @serviceObjectId and CompanyId = 'AF7AEB3E-12E4-4DF5-AA5E-9F0E9696EA6D'
+            ";
+
+            await OpenConnectionIfNeeded();
+
+            SqlCommand command = new SqlCommand(cmd, _connection);
+            command.Parameters.AddWithValue("@contentName", serviceObject.Name);
+            command.Parameters.AddWithValue("@contentIdentificationNumber", serviceObject.IdentificationNumber);
+            command.Parameters.AddWithValue("@contentNRPM", serviceObject.NextRevisionPeriodInMonths);
+            command.Parameters.AddWithValue("@contentDescription", serviceObject.Description);
+            command.Parameters.AddWithValue("@serviceObjectId", serviceObject.Id);
+
+            return await command.ExecuteNonQueryAsync();
+        }
+
+        internal async Task<bool> IsMovedServiceObject(Guid serviceObjectId, Guid companyId)
+        {
+            var cmd = @"
+                select 
+                    count(*)
+                from 
+                    ServiceObjects s
+                where 
+                    s.Id = @serviceObjectId 
+                    and s.CompanyId = @companyId
+                    and s.IsMoved = 1 or s.OriginServiceObjectId is Not Null)
+                ";
+
+            await OpenConnectionIfNeeded();
+
+            using (SqlCommand command = new SqlCommand(cmd, _connection))
+            {
+                command.Parameters.AddWithValue("@serviceObjectId", serviceObjectId);
+                command.Parameters.AddWithValue("@companyId", companyId);
+
+                var result = await command.ExecuteScalarAsync();
+
+                return Convert.ToInt32(result) > 0;
+            }
+        }
+
+        internal async Task<bool> IsOriginalServiceObject(Guid serviceObjectId, Guid companyId)
+        {
+            var cmd = @"
+                select 
+                    count(*)
+                from 
+                    ServiceObjects s
+                where 
+                    s.Id = @serviceObjectId 
+                    and s.CompanyId = @companyId
+                    and s.OriginServiceObjectId is Not Null
+                ";
+
+            await OpenConnectionIfNeeded();
+
+            using (SqlCommand command = new SqlCommand(cmd, _connection))
+            {
+                command.Parameters.AddWithValue("@serviceObjectId", serviceObjectId);
+                command.Parameters.AddWithValue("@companyId", companyId);
+
+                var result = await command.ExecuteScalarAsync();
+
+                return Convert.ToInt32(result) > 0;
+            }
+        }
+
+        internal async Task<bool> MarkServiceObjectDeleted(Guid serviceObjectId, Guid companyId)
+        {
+            var cmd = @"
+                update
+                    ServiceObjects
+                set
+                    IsDeleted = 1
+                from 
+                    ServiceObjects s
+                where 
+                    s.Id = @serviceObjectId 
+                    and s.CompanyId = @companyId
+                ";
+
+            await OpenConnectionIfNeeded();
+
+            using (SqlCommand command = new SqlCommand(cmd, _connection))
+            {
+                command.Parameters.AddWithValue("@serviceObjectId", serviceObjectId);
+                command.Parameters.AddWithValue("@companyId", companyId);
+
+                var result = await command.ExecuteNonQueryAsync();
+
+                return result == 1;
+            }
+        }
+
+        internal async Task<bool> ServiceObjectHasOpenOrderAsync(Guid serviceObjectId, Guid companyId)
+        {
+            var cmd = @"
+                select count(*) OrderId from ServiceObjects so
+                join OrderServiceObjects oso on so.id = oso.ServiceObjectId
+                join Orders o on oso.OrderId = o.Id
+                join Companies c on c.Id = so.CompanyId
+                where 
+	                so.Id = @serviceObjectId
+	                and c.Id = @companyId 
+	                and so.IsDeleted = 0
+	                and o.State = 'Open'
+                ";
+
+            await OpenConnectionIfNeeded();
+
+            using (SqlCommand command = new SqlCommand(cmd, _connection))
+            {
+                command.Parameters.AddWithValue("@serviceObjectId", serviceObjectId);
+                command.Parameters.AddWithValue("@companyId", companyId);
+
+                var result = await command.ExecuteScalarAsync();
+
+                return Convert.ToInt32(result) > 0;
+            }
+        }
+
+
         private async Task OpenConnectionIfNeeded()
         {
             if (_connection.State != System.Data.ConnectionState.Open)

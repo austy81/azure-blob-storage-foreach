@@ -1,19 +1,4 @@
-﻿//SELECT sum(SizeBytes)/1000000000 as SizeGB, count(*) NumberOfFiles, TenantCode
-//FROM [dbo].[Attachments] a
-//join [dbo].Companies c on a.CompanyId = c.Id
-//group by TenantCode
-//order by sum(SizeBytes) desc
-
-//SELECT 
-//    SUM(CASE WHEN SizeBytes > 0 THEN 1 ELSE 0 END) AS CountGreaterThanZero,
-//    SUM(CASE WHEN SizeBytes = 0 THEN 1 ELSE 0 END) AS CountEqualsZero,
-//    COUNT(*) AS TotalRecords,
-//    100.0 * SUM(CASE WHEN SizeBytes > 0 THEN 1 ELSE 0 END) / COUNT(*) AS PercentageGreaterThanZero,
-//    100.0 * SUM(CASE WHEN SizeBytes = 0 THEN 1 ELSE 0 END) / COUNT(*) AS PercentageEqualsZero
-//FROM Attachments;
-
-
-using AzureBlobStorageForeach.DTOs;
+﻿using AzureBlobStorageForeach.DTOs;
 using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 
@@ -22,28 +7,83 @@ namespace AzureBlobStorageForeach
     internal class Program
     {
         private const string attachmentsContainerSuffix = "-attachments";
-
-        static async Task Main(string[] args)
-        {
-            var config = new ConfigurationBuilder()
+        private static readonly IConfigurationRoot config = new ConfigurationBuilder()
                 .SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
                 //.AddJsonFile("appsettings.json")
                 .AddUserSecrets<Program>()
                 .Build();
 
-            await PrintNotExistingDBAttachments(config);
+        static async Task Main(string[] args)
+        {
+            var companyId = Guid.Parse("AF7AEB3E-12E4-4DF5-AA5E-9F0E9696EA6D");
+            const string excelFilePath = "C:\\Users\\HonzaAusterlitz\\Downloads\\Missing_Equipment-16_09_2024-16-27_2(1).xlsx";
+            const string workSheetNameDeleted = "Missing Equipment - DELETE";
 
-            //await UpdateAttachmentsSize(config);
+            await ServiceObjectsInfo(companyId, excelFilePath, workSheetNameDeleted);
 
-            //await RunBlobContainerUpdate(config);
+            //await UpdateServiceObjectFromExcel(companyId, excelFilePath, workSheetNameDeleted);
 
-            //var sqlClient = GetSqlClient(config);
-            //AuditCustomData(config, await sqlClient.ReadCustomDataTenant("Orders"), "Orders");
-            //AuditCustomData(config, await sqlClient.ReadCustomDataTenant("ServiceObjects"), "ServiceObjects");
-            //AuditCustomData(config, await sqlClient.ReadCustomDataTenant("Customers"), "Customers");
+            //await PrintNotExistingDBAttachments();
+
+            //await UpdateAttachmentsSize();
+
+            //await RunBlobContainerUpdate();
+
+            //var sqlClient = GetSqlClient();
+            //AuditCustomData(await sqlClient.ReadCustomDataTenant("Orders"), "Orders");
+            //AuditCustomData(await sqlClient.ReadCustomDataTenant("ServiceObjects"), "ServiceObjects");
+            //AuditCustomData(await sqlClient.ReadCustomDataTenant("Customers"), "Customers");
         }
 
-        private static void AuditCustomData(IConfigurationRoot config, IEnumerable<CustomDataTenant>? entityList, string auditedObject)
+        private static async Task UpdateServiceObjectFromExcel(Guid companyId, string filePath, string worksheetName)
+        {
+            var excelClient = new ExcelClient();
+            var sqlClient = GetSqlClient();
+            var serviceObjects = excelClient.LoadServiceObjects(filePath, worksheetName);
+
+            var cursor = 0;
+            foreach (var serviceObject in serviceObjects)
+            {
+                cursor++;
+                var updatedCount = await sqlClient.MarkServiceObjectDeleted(serviceObject.Id, companyId);
+                if (!updatedCount)
+                {
+                    Console.WriteLine($"ERROR ID:{serviceObject.Id} name:{serviceObject.Name}");
+                }
+
+                if (cursor % 200 == 0)
+                {
+                    Console.WriteLine($"{cursor:D4} / {serviceObjects.Count:D4}");
+                }
+            }
+        }
+
+        private static async Task ServiceObjectsInfo(Guid companyId, string excelFilePath, string workSheetName)
+        {
+            var excelClient = new ExcelClient();
+            var sqlClient = GetSqlClient();
+
+            var serviceObjects = excelClient.LoadServiceObjects(excelFilePath, workSheetName);
+            var cursor = 0;
+            foreach (var serviceObject in serviceObjects)
+            {
+                cursor++;
+                //var isMoved = await sqlClient.IsMovedServiceObject(serviceObject.Id, companyId);
+                //var hasOpenOrder = await sqlClient.ServiceObjectHasOpenOrderAsync(serviceObject.Id, companyId);
+                var isOriginalServiceObject = await sqlClient.IsOriginalServiceObject(serviceObject.Id, companyId);
+                if (isOriginalServiceObject)
+                {
+                    Console.WriteLine($"isOriginalServiceObject Id:{serviceObject.Id}");
+                }
+                if (cursor % 200 == 0)
+                {
+                    Console.WriteLine($"{cursor:D4} / {serviceObjects.Count:D4}");
+                }
+            }
+            Console.WriteLine($"Checked {cursor} records.");
+        }
+
+        private static void AuditCustomData(IEnumerable<CustomDataTenant>? entityList, string auditedObject)
         {
             if (entityList == null)
             {
@@ -75,16 +115,16 @@ namespace AzureBlobStorageForeach
                 Console.WriteLine($"{auditedObject} tenants with error: {tenant}");
         }
 
-        private static async Task UpdateAttachmentsSize(IConfigurationRoot config, string processTenant = "schlieger")
+        private static async Task UpdateAttachmentsSize(string processTenant = "schlieger")
         {
-            var blobStorageClient = GetBlobStorageClient(config);
+            var blobStorageClient = GetBlobStorageClient();
 
             IEnumerable<string> containerNames = await blobStorageClient.ListContainersAsync();
             List<string> attachmentContainers = [.. containerNames.Where(x => x.EndsWith(attachmentsContainerSuffix)).OrderBy(x => x)];
             Console.WriteLine($"Loaded {attachmentContainers.Count()} containers.");
             Console.WriteLine($"First 10 containers: {string.Join(", ", attachmentContainers.Take(10))}...");
 
-            var sqlClient = GetSqlClient(config);
+            var sqlClient = GetSqlClient();
 
             foreach (var containerName in attachmentContainers)
             {
@@ -125,15 +165,15 @@ namespace AzureBlobStorageForeach
             }
         }
 
-        private static async Task PrintNotExistingDBAttachments(IConfigurationRoot config, string processTenant = "")
+        private static async Task PrintNotExistingDBAttachments(string processTenant = "")
         {
-            var blobStorageClient = GetBlobStorageClient(config);
+            var blobStorageClient = GetBlobStorageClient();
 
             IEnumerable<string> containerNames = await blobStorageClient.ListContainersAsync();
             List<string> attachmentContainers = [.. containerNames.Where(x => x.EndsWith(attachmentsContainerSuffix)).OrderBy(x => x)];
             Console.WriteLine($"Loaded {attachmentContainers.Count()} containers.");
 
-            var sqlClient = GetSqlClient(config);
+            var sqlClient = GetSqlClient();
 
             foreach (var containerName in attachmentContainers)
             {
@@ -163,11 +203,11 @@ namespace AzureBlobStorageForeach
         }
 
 
-        private static async Task RunBlobContainerUpdate(IConfigurationRoot config, string tenantCode)
+        private static async Task RunBlobContainerUpdate(string tenantCode)
         {
-            var blobStorageClient = GetBlobStorageClient(config);
+            var blobStorageClient = GetBlobStorageClient();
 
-            var sqlClient = GetSqlClient(config);
+            var sqlClient = GetSqlClient();
             var attachments = await sqlClient.ReadAttachements(tenantCode);
 
             Console.WriteLine("Starting properties update...");
@@ -191,7 +231,7 @@ namespace AzureBlobStorageForeach
             return targetFilename;
         }
 
-        private static BlobStorageClient GetBlobStorageClient(IConfigurationRoot config)
+        private static BlobStorageClient GetBlobStorageClient()
         {
             var connectionString = config.GetConnectionString("BlobStorageProd");
             if (string.IsNullOrEmpty(connectionString))
@@ -203,7 +243,7 @@ namespace AzureBlobStorageForeach
             return blobStorageClient;
         }
 
-        private static SqlClient GetSqlClient(IConfigurationRoot config)
+        private static SqlClient GetSqlClient()
         {
             var connectionString = config.GetConnectionString("SQLServerProd");
             //var connectionString = config.GetConnectionString("SQLServer");

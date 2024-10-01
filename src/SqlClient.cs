@@ -225,6 +225,34 @@ WHERE c.TenantCode = '{tenantCode}'
             }
         }
 
+        internal async Task<bool> UpdateServiceObjectNameAsync(string serviceObjectName, string serviceObjectExternalId, Guid companyId)
+        {
+            var cmd = @"
+                update
+                    ServiceObjects
+                set
+                    Name = @serviceObjectName
+                from 
+                    ServiceObjects s
+                where 
+                    s.ExternalId = @serviceObjectExternalId 
+                    and s.CompanyId = @companyId
+                ";
+
+            await OpenConnectionIfNeeded();
+
+            using (SqlCommand command = new SqlCommand(cmd, _connection))
+            {
+                command.Parameters.AddWithValue("@serviceObjectExternalId", serviceObjectExternalId);
+                command.Parameters.AddWithValue("@companyId", companyId);
+                command.Parameters.AddWithValue("@serviceObjectName", serviceObjectName);
+
+                var result = await command.ExecuteNonQueryAsync();
+
+                return result == 1;
+            }
+        }
+
         internal async Task<bool> ServiceObjectHasOpenOrderAsync(Guid serviceObjectId, Guid companyId)
         {
             var cmd = @"

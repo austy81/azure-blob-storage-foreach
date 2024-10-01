@@ -16,12 +16,15 @@ namespace AzureBlobStorageForeach
         static async Task Main(string[] args)
         {
             var companyId = Guid.Parse("AF7AEB3E-12E4-4DF5-AA5E-9F0E9696EA6D");
-            const string excelFilePath = "C:\\Users\\HonzaAusterlitz\\Downloads\\Missing_Equipment-16_09_2024-16-27_2(1).xlsx";
-            const string workSheetNameDeleted = "Missing Equipment - DELETE";
+            const string excelFilePath = "C:\\Users\\HonzaAusterlitz\\Downloads\\oprava názvu zařízení 24_09_2024.xlsx";
+            //const string workSheetNameDeleted = "Missing Equipment - DELETE";
+            const string worksheetNameUpdate = "change name";
 
-            await ServiceObjectsInfo(companyId, excelFilePath, workSheetNameDeleted);
+            await UpdateServiceObjectNameFromExcel(companyId, excelFilePath, worksheetNameUpdate);
 
-            //await UpdateServiceObjectFromExcel(companyId, excelFilePath, workSheetNameDeleted);
+            //await ServiceObjectsInfo(companyId, excelFilePath, workSheetNameDeleted);
+
+            //await MarkServiceObjectAsDeletedFromExcel(companyId, excelFilePath, workSheetNameDeleted);
 
             //await PrintNotExistingDBAttachments();
 
@@ -35,7 +38,31 @@ namespace AzureBlobStorageForeach
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("Customers"), "Customers");
         }
 
-        private static async Task UpdateServiceObjectFromExcel(Guid companyId, string filePath, string worksheetName)
+        private static async Task UpdateServiceObjectNameFromExcel(Guid companyId, string filePath, string worksheetName)
+        {
+            var excelClient = new ExcelClient();
+            var sqlClient = GetSqlClient();
+            var serviceObjects = excelClient.LoadServiceObjects(filePath, worksheetName);
+
+            var cursor = 0;
+            foreach (var serviceObject in serviceObjects)
+            {
+                cursor++;
+                var updatedCount = await sqlClient.UpdateServiceObjectNameAsync(serviceObject.Name, serviceObject.ExternalId, companyId);
+                if (!updatedCount)
+                {
+                    Console.WriteLine($"ERROR ID:{serviceObject.ExternalId} name:{serviceObject.Name}");
+                }
+
+                if (cursor % 200 == 0)
+                {
+                    Console.WriteLine($"{cursor:D4} / {serviceObjects.Count:D4}");
+                }
+            }
+        }
+
+
+        private static async Task MarkServiceObjectAsDeletedFromExcel(Guid companyId, string filePath, string worksheetName)
         {
             var excelClient = new ExcelClient();
             var sqlClient = GetSqlClient();

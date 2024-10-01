@@ -19,11 +19,11 @@ public class ExcelClient
             {
                 var serviceObject = new ServiceObject
                 {
-                    Id = Guid.Parse(row.Cell(2).GetString()), // Column B
-                    Name = row.Cell(5).GetString(),           // Column E
-                    IdentificationNumber = row.Cell(8).GetString(), // Column H
-                    NextRevisionPeriodInMonths = row.Cell(13).GetString(), // Column M
-                    Description = row.Cell(14).GetString()     // Column N
+                    ExternalId = row.Cell("A").GetString(),
+                    Name = row.Cell("B").GetString(),
+                    //IdentificationNumber = row.Cell("H").GetString(),
+                    //NextRevisionPeriodInMonths = row.Cell("M").GetString(),
+                    //Description = row.Cell("N").GetString()
                 };
 
                 serviceObjects.Add(serviceObject);

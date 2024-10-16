@@ -308,6 +308,34 @@ WHERE c.TenantCode = '{tenantCode}'
             }
         }
 
+        internal async Task<bool> UpdateMaterialPriceAsync(Guid materialId, decimal materialPrice, Guid companyId)
+        {
+            var cmd = @"
+                update
+                    Material
+                set
+                    Price = @materialPrice,
+                    Modified = GETDATE()
+                from 
+                    Material m
+                where 
+                    m.Id = @materialId 
+                    and m.CompanyId = @companyId
+                ";
+
+            await OpenConnectionIfNeeded();
+
+            using (SqlCommand command = new SqlCommand(cmd, _connection))
+            {
+                command.Parameters.AddWithValue("@materialId", materialId);
+                command.Parameters.AddWithValue("@materialPrice", materialPrice);
+                command.Parameters.AddWithValue("@companyId", companyId);
+
+                var result = await command.ExecuteNonQueryAsync();
+
+                return result == 1;
+            }
+        }
 
         private async Task OpenConnectionIfNeeded()
         {

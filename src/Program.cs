@@ -17,10 +17,12 @@ namespace AzureBlobStorageForeach
         {
             var companyId = Guid.Parse("53A8CFD7-E50A-4B16-845D-9215445D9E9F"); //horia
             const string excelFilePath = "C:\\Users\\HonzaAusterlitz\\Downloads\\Update material - horia.xlsx";
-            const string workSheetNameDelete = "DELETE";
-            //const string worksheetNameUpdate = "change name";
+            //const string workSheetNameDelete = "DELETE";
+            const string worksheetNameUpdate = "UPDATE";
 
-            await DeleteMaterialFromExcel(companyId, excelFilePath, workSheetNameDelete);
+            await UpdateMaterialPriceFromExcel(companyId, excelFilePath, worksheetNameUpdate);
+
+            //await MarkMaterialAsDeletedFromExcel(companyId, excelFilePath, workSheetNameDelete);
 
             //await UpdateServiceObjectNameFromExcel(companyId, excelFilePath, worksheetNameUpdate);
 
@@ -40,7 +42,7 @@ namespace AzureBlobStorageForeach
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("Customers"), "Customers");
         }
 
-        private static async Task DeleteMaterialFromExcel(Guid companyId, string excelFilePath, string workSheetNameDelete)
+        private static async Task MarkMaterialAsDeletedFromExcel(Guid companyId, string excelFilePath, string workSheetNameDelete)
         {
             var excelClient = new ExcelClient();
             var sqlClient = GetSqlClient();
@@ -61,6 +63,31 @@ namespace AzureBlobStorageForeach
                     Console.WriteLine($"{cursor:D4} / {materials.Count:D4}");
                 }
             }
+            Console.WriteLine($"{cursor:D4} / {materials.Count:D4}");
+        }
+
+        private static async Task UpdateMaterialPriceFromExcel(Guid companyId, string excelFilePath, string workSheetName)
+        {
+            var excelClient = new ExcelClient();
+            var sqlClient = GetSqlClient();
+            var materials = excelClient.LoadMaterial(excelFilePath, workSheetName);
+
+            var cursor = 0;
+            foreach (var material in materials)
+            {
+                cursor++;
+                var updatedCount = await sqlClient.UpdateMaterialPriceAsync(material.Id, material.Price, companyId);
+                if (!updatedCount)
+                {
+                    Console.WriteLine($"ERROR ID:{material.ExternalId} name:{material.Name}");
+                }
+
+                if (cursor % 100 == 0)
+                {
+                    Console.WriteLine($"{cursor:D4} / {materials.Count:D4}");
+                }
+            }
+            Console.WriteLine($"{cursor:D4} / {materials.Count:D4}");
         }
 
         private static async Task UpdateServiceObjectNameFromExcel(Guid companyId, string filePath, string worksheetName)

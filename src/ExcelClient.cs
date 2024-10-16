@@ -53,6 +53,7 @@ public class ExcelClient
                     ExternalId = row.Cell("B").GetString(),
                     Name = row.Cell("C").GetString(),
                     Code = row.Cell("D").GetString(),
+                    Price = decimal.Parse(row.Cell("E").GetString()),
                 };
                 materials.Add(material);
             }

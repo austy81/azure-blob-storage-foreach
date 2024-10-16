@@ -15,16 +15,18 @@ namespace AzureBlobStorageForeach
 
         static async Task Main(string[] args)
         {
-            var companyId = Guid.Parse("AF7AEB3E-12E4-4DF5-AA5E-9F0E9696EA6D");
-            const string excelFilePath = "C:\\Users\\HonzaAusterlitz\\Downloads\\oprava názvu zařízení 24_09_2024.xlsx";
-            //const string workSheetNameDeleted = "Missing Equipment - DELETE";
-            const string worksheetNameUpdate = "change name";
+            var companyId = Guid.Parse("53A8CFD7-E50A-4B16-845D-9215445D9E9F"); //horia
+            const string excelFilePath = "C:\\Users\\HonzaAusterlitz\\Downloads\\Update material - horia.xlsx";
+            const string workSheetNameDelete = "DELETE";
+            //const string worksheetNameUpdate = "change name";
 
-            await UpdateServiceObjectNameFromExcel(companyId, excelFilePath, worksheetNameUpdate);
+            await DeleteMaterialFromExcel(companyId, excelFilePath, workSheetNameDelete);
 
-            //await ServiceObjectsInfo(companyId, excelFilePath, workSheetNameDeleted);
+            //await UpdateServiceObjectNameFromExcel(companyId, excelFilePath, worksheetNameUpdate);
 
-            //await MarkServiceObjectAsDeletedFromExcel(companyId, excelFilePath, workSheetNameDeleted);
+            //await ServiceObjectsInfo(companyId, excelFilePath, workSheetNameDelete);
+
+            //await MarkServiceObjectAsDeletedFromExcel(companyId, excelFilePath, workSheetNameDelete);
 
             //await PrintNotExistingDBAttachments();
 
@@ -36,6 +38,29 @@ namespace AzureBlobStorageForeach
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("Orders"), "Orders");
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("ServiceObjects"), "ServiceObjects");
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("Customers"), "Customers");
+        }
+
+        private static async Task DeleteMaterialFromExcel(Guid companyId, string excelFilePath, string workSheetNameDelete)
+        {
+            var excelClient = new ExcelClient();
+            var sqlClient = GetSqlClient();
+            var materials = excelClient.LoadMaterial(excelFilePath, workSheetNameDelete);
+
+            var cursor = 0;
+            foreach (var material in materials)
+            {
+                cursor++;
+                var updatedCount = await sqlClient.MarkMaterialAsDeletedAsync(material.Id, companyId);
+                if (!updatedCount)
+                {
+                    Console.WriteLine($"ERROR ID:{material.ExternalId} name:{material.Name}");
+                }
+
+                if (cursor % 1 == 0)
+                {
+                    Console.WriteLine($"{cursor:D4} / {materials.Count:D4}");
+                }
+            }
         }
 
         private static async Task UpdateServiceObjectNameFromExcel(Guid companyId, string filePath, string worksheetName)

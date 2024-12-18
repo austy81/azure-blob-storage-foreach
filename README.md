@@ -6,8 +6,10 @@ To connect to your blob storage, create secrets.json in fillowing format:
 `
 {
   "ConnectionStrings": {
-    "BlobStorage": "My connection string to blob storage."
-  }
+    "SQLServer": "xxx",
+    "BlobStorage": "yyy",
+    "SQLServerProd": "zzz",
+    "BlobStorageProd": "aaa"
 }
 `
 

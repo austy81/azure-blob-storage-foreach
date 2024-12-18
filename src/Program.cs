@@ -1,5 +1,11 @@
 ﻿using AzureBlobStorageForeach.DTOs;
 using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using System.ComponentModel.DataAnnotations;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace AzureBlobStorageForeach
@@ -15,12 +21,14 @@ namespace AzureBlobStorageForeach
 
         static async Task Main(string[] args)
         {
-            var companyId = Guid.Parse("53A8CFD7-E50A-4B16-845D-9215445D9E9F"); //horia
-            const string excelFilePath = "C:\\Users\\HonzaAusterlitz\\Downloads\\Update material - horia.xlsx";
+            //var companyId = Guid.Parse("53A8CFD7-E50A-4B16-845D-9215445D9E9F"); //horia
+            //const string excelFilePath = "C:\\Users\\HonzaAusterlitz\\Downloads\\Update material - horia.xlsx";
             //const string workSheetNameDelete = "DELETE";
-            const string worksheetNameUpdate = "UPDATE";
+            //const string worksheetNameUpdate = "UPDATE";
 
-            await UpdateMaterialPriceFromExcel(companyId, excelFilePath, worksheetNameUpdate);
+            await ValidateCustomFormTemplates();
+
+            //await UpdateMaterialPriceFromExcel(companyId, excelFilePath, worksheetNameUpdate);
 
             //await MarkMaterialAsDeletedFromExcel(companyId, excelFilePath, workSheetNameDelete);
 
@@ -40,6 +48,98 @@ namespace AzureBlobStorageForeach
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("Orders"), "Orders");
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("ServiceObjects"), "ServiceObjects");
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("Customers"), "Customers");
+        }
+
+        private static async Task ValidateCustomFormTemplates()
+        {
+            var sqlClient = GetSqlClient();
+            var entities = await sqlClient.ReadCustomFormTemplates();
+            var uniqueTemplates = new Dictionary<string, CustomFormTemplate>();
+
+            foreach (var entity in entities)
+            {
+                var template = entity.Template;
+
+                // Compute hash of the template
+                using var sha256 = SHA256.Create();
+                var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(template));
+                var hashString = Convert.ToHexString(hashBytes); // Convert to a readable string
+
+                // Add to dictionary
+                if (!uniqueTemplates.ContainsKey(hashString))
+                {
+                    uniqueTemplates[hashString] = entity;
+                }
+            }
+
+            string filePath = "C:\\temp\\output.log";
+
+            // Open a stream to the file
+            using (var writer = new StreamWriter(filePath))
+            {
+                writer.AutoFlush = true; // Ensure immediate writing to file
+                Console.SetOut(writer); // Redirect Console output
+
+                Console.WriteLine($"Number of unique Templates is: {uniqueTemplates.Count}.");
+
+                using var httpClient = new HttpClient();
+                httpClient.Timeout = TimeSpan.FromSeconds(10);
+
+                httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/yaml"));
+                var client = new MWorkRestClient(httpClient);
+                foreach (var template in uniqueTemplates)
+                {
+                    if (template.Value.Template.IsNullOrEmpty())
+                    {
+                        Console.WriteLine($"EMPTY: {template.Value.Id}");
+                        continue;
+                    }
+
+                    string response = await client.MakeRequestAsync(
+                        "http://localhost:5000/main/api/schemas/customForm/template/validate",
+                        HttpMethod.Post,
+                        template.Value.Template);
+
+                    TemplateValidationResult? validationResult;
+                    try
+                    {
+                        validationResult = JsonSerializer.Deserialize<TemplateValidationResult>(response);
+                        if (validationResult == null)
+                        {
+                            continue;
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        Console.WriteLine($"Invalid template: {template.Value.Id} CompanyId: {template.Value.CompanyId} Failed to deserialize JSON: {response} Exception: {ex.Message}");
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Invalid template: {template.Value.Id} CompanyId: {template.Value.CompanyId} An unexpected error occurred: {ex.Message}");
+                        continue;
+                    }
+
+
+                    if (validationResult == null)
+                    {
+                        Console.WriteLine($"Invalid template: {template.Value.Id} CompanyId: {template.Value.CompanyId} Response can not be parsed.");
+                        continue;
+                    }
+
+                    if (validationResult.isValid == false)
+                    {
+                        Console.WriteLine($"Invalid template: {template.Value.Id} CompanyId: {template.Value.CompanyId} errors: {validationResult.ToString()}");
+                        continue;
+                    }
+
+                    if (validationResult.isValid == true)
+                    {
+                        Console.WriteLine($"OK: {template.Value.Id}");
+                    }
+                }
+                Console.WriteLine("Finished.");
+            }
         }
 
         private static async Task MarkMaterialAsDeletedFromExcel(Guid companyId, string excelFilePath, string workSheetNameDelete)

@@ -67,6 +67,29 @@ WHERE c.TenantCode = '{tenantCode}'
             return orders;
         }
 
+        public async Task<IEnumerable<CustomFormTemplate>> ReadCustomFormTemplates()
+        {
+            string queryString = QueryStrings.customFormTemplatesQueryString;
+            var entities = new List<CustomFormTemplate>();
+
+            await OpenConnectionIfNeeded();
+            var command = new SqlCommand(queryString, _connection);
+
+            using (SqlDataReader reader = await command.ExecuteReaderAsync())
+            {
+                while (reader.Read())
+                {
+                    entities.Add(
+                        new CustomFormTemplate(
+                            Id: Guid.Parse(reader[0]?.ToString() ?? string.Empty),
+                            CompanyId: Guid.Parse(reader[1]?.ToString() ?? string.Empty),
+                            Template: reader[2]?.ToString() ?? string.Empty)
+                        );
+                }
+            }
+            return entities;
+        }
+
         internal async Task<int> UpdateAttachmentSizeByInternalStorageIdAsync(string tenantCode, string internalStorageId, string contentHash, long? contentLength)
         {
             var cmd = @"

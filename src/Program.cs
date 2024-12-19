@@ -1,7 +1,10 @@
-﻿using AzureBlobStorageForeach.DTOs;
+﻿using Azure;
+using AzureBlobStorageForeach.DTOs;
+using DocumentFormat.OpenXml.InkML;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -26,7 +29,11 @@ namespace AzureBlobStorageForeach
             //const string workSheetNameDelete = "DELETE";
             //const string worksheetNameUpdate = "UPDATE";
 
-            await ValidateCustomFormTemplates();
+            await ValidateCustomFieldsDataTemplates();
+
+            //await ValidateCustomFieldsTemplates();
+
+            //await ValidateCustomFormTemplates();
 
             //await UpdateMaterialPriceFromExcel(companyId, excelFilePath, worksheetNameUpdate);
 
@@ -48,6 +55,137 @@ namespace AzureBlobStorageForeach
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("Orders"), "Orders");
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("ServiceObjects"), "ServiceObjects");
             //AuditCustomData(await sqlClient.ReadCustomDataTenant("Customers"), "Customers");
+        }
+
+        private static async Task ValidateCustomFieldsDataTemplates()
+        {
+            var sqlClient = GetSqlClient();
+
+            //QueryStrings.CustomerCustomDataTemplate
+            //QueryStrings.OrderCustomDataTemplate
+            //QueryStrings.ServiceObjectCustomDataTemplate
+            var entities = await sqlClient.ReadCustomDataTemplates(QueryStrings.ServiceObjectCustomDataTemplate);
+            string validationName = nameof(QueryStrings.ServiceObjectCustomDataTemplate);
+
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(2);
+            var client = new MWorkRestClient(httpClient);
+
+            string filePath = $"C:\\temp\\{validationName}.log";
+            File.Delete(filePath);
+            string templatesDir = $"C:\\temp\\{validationName}\\";
+            Directory.CreateDirectory(templatesDir);
+            using (var writer = new StreamWriter(filePath))
+            {
+                writer.AutoFlush = true; // Ensure immediate writing to file
+                Console.SetOut(writer); // Redirect Console output
+                Console.WriteLine($"Number of records is: {entities.Count()}.");
+
+                Console.WriteLine($"-------------------- Validation: {validationName}) --------------------");
+
+                var companyName = entities.FirstOrDefault()?.CompanyName ?? string.Empty;
+                foreach (var entity in entities.OrderBy(x => x.CompanyName))
+                {
+                    if (entity.CompanyName != companyName)
+                    {
+                        companyName = entity.CompanyName;
+                        Console.WriteLine($"-------------------- Company: {companyName} ({entity.TenantCode})) --------------------");
+                    }
+                        
+                    var template = entity.Template.Trim();
+                    var customData = entity.CustomData.Trim();
+
+                    if (!template.IsNullOrEmpty() && !customData.IsNullOrEmpty())
+                    {
+                        string response = await client.MakeMultipartRequestAsync(
+                            "http://localhost:5000/main/api/schemas/customFields/data/validate?compatibilityMode=true",
+                            HttpMethod.Post,
+                            customData, template);
+                        ProcessTemplateValidationResponse(template: entity.Id, company: entity.TenantCode, response);
+                        File.WriteAllText($"{entity.TenantCode}_{entity.Id}.yml", entity.Template);
+                    }
+                    else
+                    {
+                        var timestamp = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+                        Console.WriteLine($"{timestamp} EMPTY  : {entity.Id}");
+                    }
+                }
+                Console.WriteLine("Done.");
+            }
+        }
+
+
+        private static async Task ValidateCustomFieldsTemplates()
+        {
+            var sqlClient = GetSqlClient();
+            var entities = await sqlClient.ReadCompanyTemplates();
+
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(10);
+            //httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/yaml"));
+            var client = new MWorkRestClient(httpClient);
+
+            string filePath = "C:\\temp\\CustomFieldsTemplatesValidation.log";
+            File.Delete(filePath);
+            string templatesDir = "C:\\temp\\custom_data_templates\\";
+            using (var writer = new StreamWriter(filePath))
+            {
+                writer.AutoFlush = true; // Ensure immediate writing to file
+                Console.SetOut(writer); // Redirect Console output
+                Console.WriteLine($"Number of records is: {entities.Count()}.");
+
+                foreach (var entity in entities)
+                {
+                    Console.WriteLine($"-------------------- Company: {entity.Name} ({entity.TenantCode}) --------------------");
+
+                    var template = entity.CustomerCustomDataTemplate.Trim();
+                    if (!template.IsNullOrEmpty())
+                    {
+                        string response = await client.MakeRequestAsync(
+                            "http://localhost:5000/main/api/schemas/customFields/template/validate?compatibilityMode=true",
+                            HttpMethod.Post,
+                            template);
+                        ProcessTemplateValidationResponse(template: "CustomerCustomDataTemplate", company: entity.Id.ToString(), response);
+                        File.WriteAllText(templatesDir + $"{entity.TenantCode}_CustomerCustomDataTemplate.yml", entity.CustomerCustomDataTemplate);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"EMPTY  : template: CustomerCustomDataTemplate");
+                    }
+
+                    template = entity.OrderCustomDataTemplate.Trim();
+                    if (!template.IsNullOrEmpty())
+                    {
+                        string response = await client.MakeRequestAsync(
+                            "http://localhost:5000/main/api/schemas/customFields/template/validate?compatibilityMode=true",
+                            HttpMethod.Post,
+                            template);
+                        ProcessTemplateValidationResponse(template: "OrderCustomDataTemplate", company: entity.Id.ToString(), response);
+                        File.WriteAllText(templatesDir + $"{entity.TenantCode}_OrderCustomDataTemplate.yml", entity.OrderCustomDataTemplate);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"EMPTY  : template: OrderCustomDataTemplate");
+                    }
+
+                    template = entity.ServiceObjectCustomDataTemplate.Trim();
+                    if (!template.IsNullOrEmpty())
+                    {
+                        string response = await client.MakeRequestAsync(
+                            "http://localhost:5000/main/api/schemas/customFields/template/validate?compatibilityMode=true",
+                            HttpMethod.Post,
+                            template);
+                        ProcessTemplateValidationResponse(template: "ServiceObjectCustomDataTemplate", company: entity.Id.ToString(), response);
+                        File.WriteAllText(templatesDir + $"{entity.TenantCode}_ServiceObjectCustomDataTemplate.yml", entity.ServiceObjectCustomDataTemplate);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"EMPTY  : template: ServiceObjectCustomDataTemplate");
+                    }
+
+                    Console.WriteLine();
+                }
+            }
         }
 
         private static async Task ValidateCustomFormTemplates()
@@ -79,66 +217,64 @@ namespace AzureBlobStorageForeach
             {
                 writer.AutoFlush = true; // Ensure immediate writing to file
                 Console.SetOut(writer); // Redirect Console output
-
                 Console.WriteLine($"Number of unique Templates is: {uniqueTemplates.Count}.");
 
                 using var httpClient = new HttpClient();
                 httpClient.Timeout = TimeSpan.FromSeconds(10);
-
                 httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/yaml"));
                 var client = new MWorkRestClient(httpClient);
+
                 foreach (var template in uniqueTemplates)
                 {
                     if (template.Value.Template.IsNullOrEmpty())
                     {
-                        Console.WriteLine($"EMPTY: {template.Value.Id}");
+                        Console.WriteLine($"EMPTY:   {template.Value.Id}");
                         continue;
                     }
 
                     string response = await client.MakeRequestAsync(
-                        "http://localhost:5000/main/api/schemas/customForm/template/validate",
+                        "http://localhost:5000/main/api/schemas/customForm/template/validate?compatibilityMode=true",
                         HttpMethod.Post,
                         template.Value.Template);
-
-                    TemplateValidationResult? validationResult;
-                    try
-                    {
-                        validationResult = JsonSerializer.Deserialize<TemplateValidationResult>(response);
-                        if (validationResult == null)
-                        {
-                            continue;
-                        }
-                    }
-                    catch (JsonException ex)
-                    {
-                        Console.WriteLine($"Invalid template: {template.Value.Id} CompanyId: {template.Value.CompanyId} Failed to deserialize JSON: {response} Exception: {ex.Message}");
-                        continue;
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Invalid template: {template.Value.Id} CompanyId: {template.Value.CompanyId} An unexpected error occurred: {ex.Message}");
-                        continue;
-                    }
-
-
-                    if (validationResult == null)
-                    {
-                        Console.WriteLine($"Invalid template: {template.Value.Id} CompanyId: {template.Value.CompanyId} Response can not be parsed.");
-                        continue;
-                    }
-
-                    if (validationResult.isValid == false)
-                    {
-                        Console.WriteLine($"Invalid template: {template.Value.Id} CompanyId: {template.Value.CompanyId} errors: {validationResult.ToString()}");
-                        continue;
-                    }
-
-                    if (validationResult.isValid == true)
-                    {
-                        Console.WriteLine($"OK: {template.Value.Id}");
-                    }
+                    ProcessTemplateValidationResponse(template.Value.Id.ToString(), template.Value.CompanyId.ToString(), response);
                 }
                 Console.WriteLine("Finished.");
+            }
+        }
+
+        private static void ProcessTemplateValidationResponse(string template, string company, string response)
+        {
+            var timestamp = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+            TemplateValidationResult? validationResult;
+            try
+            {
+                validationResult = JsonSerializer.Deserialize<TemplateValidationResult>(response);
+                if (validationResult == null)
+                {
+                    Console.WriteLine($"{timestamp} INVALID: {template} Company: {company} Response can not be parsed.");
+                    return;
+                }
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"{timestamp} INVALID: {template} Company: {company} Failed to deserialize JSON: {response} Exception: {ex.Message}");
+                return;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"{timestamp} INVALID: {template} Company: {company} An unexpected error occurred: {ex.Message}");
+                return;
+            }
+
+            if (validationResult.isValid == false)
+            {
+                Console.WriteLine($"{timestamp} INVALID: {template} Company: {company} errors: {validationResult.ToString()}");
+                return;
+            }
+
+            if (validationResult.isValid == true)
+            {
+                Console.WriteLine($"{timestamp} OK     : {template}, Company: {company}");
             }
         }
 
@@ -212,7 +348,6 @@ namespace AzureBlobStorageForeach
                 }
             }
         }
-
 
         private static async Task MarkServiceObjectAsDeletedFromExcel(Guid companyId, string filePath, string worksheetName)
         {
@@ -380,7 +515,6 @@ namespace AzureBlobStorageForeach
                 Console.WriteLine($"Tenant {tenantCode} has {nonExisting}/{position} attachments in Blob Storage with no record in DB.");
             }
         }
-
 
         private static async Task RunBlobContainerUpdate(string tenantCode)
         {

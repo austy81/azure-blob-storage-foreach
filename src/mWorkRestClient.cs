@@ -66,8 +66,48 @@ public class MWorkRestClient
             Console.WriteLine(ex.ToString());
             return string.Empty;
         }
-
     }
+
+    public async Task<string> MakeMultipartRequestAsync(string url, HttpMethod method, string data, string template)
+    {
+        using var request = new HttpRequestMessage(method, url);
+
+        // Add Authorization header if the access token is available
+        if (_accessToken != null)
+        {
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _accessToken);
+        }
+
+        // Create multipart content
+        var multipartContent = new MultipartFormDataContent();
+
+        if (!string.IsNullOrEmpty(data))
+        {
+            var dataContent = new StringContent(data, Encoding.UTF8, "application/json");
+            multipartContent.Add(dataContent, "data");
+        }
+
+        if (!string.IsNullOrEmpty(template))
+        {
+            var templateContent = new StringContent(template, Encoding.UTF8, "application/yaml");
+            multipartContent.Add(templateContent, "template");
+        }
+
+        request.Content = multipartContent;
+
+        try
+        {
+            var response = await _httpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.ToString());
+            return string.Empty;
+        }
+    }
+
 
     private class AuthResponse
     {

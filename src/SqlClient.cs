@@ -90,6 +90,56 @@ WHERE c.TenantCode = '{tenantCode}'
             return entities;
         }
 
+        public async Task<IEnumerable<CompanyTemplate>> ReadCompanyTemplates()
+        {
+            var entities = new List<CompanyTemplate>();
+
+            await OpenConnectionIfNeeded();
+            var command = new SqlCommand(QueryStrings.CompanyTemplates, _connection);
+
+            using (SqlDataReader reader = await command.ExecuteReaderAsync())
+            {
+                while (reader.Read())
+                {
+                    entities.Add(
+                        new CompanyTemplate(
+                            Id: Guid.Parse(reader[0]?.ToString() ?? string.Empty),
+                            Name: reader[1]?.ToString() ?? string.Empty,
+                            TenantCode: reader[2]?.ToString() ?? string.Empty,
+                            CustomerCustomDataTemplate: reader[3]?.ToString() ?? string.Empty,
+                            OrderCustomDataTemplate: reader[4]?.ToString() ?? string.Empty,
+                            ServiceObjectCustomDataTemplate: reader[5]?.ToString() ?? string.Empty)
+                        );
+                }
+            }
+            return entities;
+        }
+
+        public async Task<IEnumerable<CustomDataTemplate>> ReadCustomDataTemplates(string query)
+        {
+            var entities = new List<CustomDataTemplate>();
+
+            await OpenConnectionIfNeeded();
+            var command = new SqlCommand(query, _connection);
+
+            using (SqlDataReader reader = await command.ExecuteReaderAsync())
+            {
+                while (reader.Read())
+                {
+                    entities.Add(
+                        new CustomDataTemplate(
+                            Id: reader[0]?.ToString() ?? string.Empty,
+                            CustomData: reader[1]?.ToString() ?? string.Empty,
+                            Template: reader[2]?.ToString() ?? string.Empty,
+                            TenantCode: reader[3]?.ToString() ?? string.Empty,
+                            CompanyName: reader[4]?.ToString() ?? string.Empty
+                            )
+                        );
+                }
+            }
+            return entities;
+        }
+
         internal async Task<int> UpdateAttachmentSizeByInternalStorageIdAsync(string tenantCode, string internalStorageId, string contentHash, long? contentLength)
         {
             var cmd = @"

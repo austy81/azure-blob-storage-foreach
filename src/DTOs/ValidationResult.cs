@@ -23,6 +23,6 @@ public class ValidationError
 
     public override string ToString()
     {
-        return $"ErrorCode: {errorCode}, Message: {message}, Pointer: {pointer}";
+        return $"   ErrorCode: {errorCode}, Message: {message}, Pointer: {pointer}";
     }
 }

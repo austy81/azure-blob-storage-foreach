@@ -49,11 +49,11 @@ public class ExcelClient
             {
                 var material = new Material
                 {
-                    Id = Guid.Parse(row.Cell("A").GetString()),
+                    //Id = Guid.Parse(row.Cell("A").GetString()),
                     ExternalId = row.Cell("B").GetString(),
-                    Name = row.Cell("C").GetString(),
-                    Code = row.Cell("D").GetString(),
-                    Price = decimal.Parse(row.Cell("E").GetString()),
+                    //Name = row.Cell("C").GetString(),
+                    //Code = row.Cell("D").GetString(),
+                    //Price = decimal.Parse(row.Cell("E").GetString()),
                 };
                 materials.Add(material);
             }

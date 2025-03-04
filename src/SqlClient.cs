@@ -354,6 +354,34 @@ WHERE c.TenantCode = '{tenantCode}'
             }
         }
 
+        internal async Task<bool> MarkMaterialAsDeletedByExternalIdAsync(string externalId, Guid companyId)
+        {
+            var cmd = @"
+                update
+                    Material
+                set
+                    IsDeleted = 1,
+                    Modified = GETDATE()
+                from 
+                    Material m
+                where 
+                    m.ExternalId = @externalId 
+                    and m.CompanyId = @companyId
+                ";
+
+            await OpenConnectionIfNeeded();
+
+            using (SqlCommand command = new SqlCommand(cmd, _connection))
+            {
+                command.Parameters.AddWithValue("@externalId", externalId);
+                command.Parameters.AddWithValue("@companyId", companyId);
+
+                var result = await command.ExecuteNonQueryAsync();
+
+                return result == 1;
+            }
+        }
+
         internal async Task<bool> ServiceObjectHasOpenOrderAsync(Guid serviceObjectId, Guid companyId)
         {
             var cmd = @"

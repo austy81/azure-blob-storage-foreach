@@ -24,12 +24,12 @@ namespace AzureBlobStorageForeach
 
         static async Task Main(string[] args)
         {
-            //var companyId = Guid.Parse("53A8CFD7-E50A-4B16-845D-9215445D9E9F"); //horia
-            //const string excelFilePath = "C:\\Users\\HonzaAusterlitz\\Downloads\\Update material - horia.xlsx";
-            //const string workSheetNameDelete = "DELETE";
+            var companyId = Guid.Parse("7df332c6-94af-4953-8e63-dda370ba273e"); //rhino
+            const string excelFilePath = @"C:\Users\HonzaAusterlitz\Downloads\Rhino-vymazat.xlsx";
+            const string workSheetNameDelete = "DELETE";
             //const string worksheetNameUpdate = "UPDATE";
 
-            await ValidateCustomFieldsDataTemplates();
+            //await ValidateCustomFieldsDataTemplates();
 
             //await ValidateCustomFieldsTemplates();
 
@@ -37,7 +37,7 @@ namespace AzureBlobStorageForeach
 
             //await UpdateMaterialPriceFromExcel(companyId, excelFilePath, worksheetNameUpdate);
 
-            //await MarkMaterialAsDeletedFromExcel(companyId, excelFilePath, workSheetNameDelete);
+            await MarkMaterialAsDeletedFromExcel(companyId, excelFilePath, workSheetNameDelete);
 
             //await UpdateServiceObjectNameFromExcel(companyId, excelFilePath, worksheetNameUpdate);
 
@@ -288,13 +288,13 @@ namespace AzureBlobStorageForeach
             foreach (var material in materials)
             {
                 cursor++;
-                var updatedCount = await sqlClient.MarkMaterialAsDeletedAsync(material.Id, companyId);
+                var updatedCount = await sqlClient.MarkMaterialAsDeletedByExternalIdAsync(material.ExternalId, companyId);
                 if (!updatedCount)
                 {
                     Console.WriteLine($"ERROR ID:{material.ExternalId} name:{material.Name}");
                 }
 
-                if (cursor % 1 == 0)
+                if (cursor % 100 == 0)
                 {
                     Console.WriteLine($"{cursor:D4} / {materials.Count:D4}");
                 }
@@ -312,10 +312,13 @@ namespace AzureBlobStorageForeach
             foreach (var material in materials)
             {
                 cursor++;
-                var updatedCount = await sqlClient.UpdateMaterialPriceAsync(material.Id, material.Price, companyId);
-                if (!updatedCount)
+                if (material.Id != null)
                 {
-                    Console.WriteLine($"ERROR ID:{material.ExternalId} name:{material.Name}");
+                    var updatedCount = await sqlClient.UpdateMaterialPriceAsync(material.Id ?? Guid.NewGuid(), material.Price, companyId);
+                    if (!updatedCount)
+                    {
+                        Console.WriteLine($"ERROR ID:{material.ExternalId} name:{material.Name}");
+                    }
                 }
 
                 if (cursor % 100 == 0)

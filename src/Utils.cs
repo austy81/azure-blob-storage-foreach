@@ -75,5 +75,24 @@ namespace AzureBlobStorageForeach
             // Replace non breaking white space with regular space
             return input.Replace('\u00A0', ' ');
         }
+
+        public static bool IsFullPhoneNumber(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            try
+            {
+                var phoneNumberUtil = PhoneNumbers.PhoneNumberUtil.GetInstance();
+                var parsedPhone = phoneNumberUtil.Parse(text, null);
+                var isValid = phoneNumberUtil.IsValidNumber(parsedPhone);
+
+                return isValid;
+            }
+            catch (PhoneNumbers.NumberParseException)
+            {
+                return false;
+            }
+        }
     }
 }

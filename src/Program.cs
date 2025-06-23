@@ -24,10 +24,11 @@ namespace AzureBlobStorageForeach
 
         static async Task Main(string[] args)
         {
-            var companyId = Guid.Parse("7df332c6-94af-4953-8e63-dda370ba273e"); //rhino
-            const string excelFilePath = @"C:\Users\HonzaAusterlitz\Downloads\Rhino-vymazat.xlsx";
-            const string workSheetNameDelete = "DELETE";
+            var companyId = Guid.Parse("2384AFCE-C5C4-4A61-95E5-B2B48F5B3A8A"); //FVE Podpora s.r.o.
+            const string excelFilePath = @"C:\Users\HonzaAusterlitz\Downloads\company-FVEpodpora.xlsx";
+            //const string workSheetNameDelete = "DELETE";
             //const string worksheetNameUpdate = "UPDATE";
+            const string workSheetNameContacts = "Kontakty";
 
             //await ValidateCustomFieldsDataTemplates();
 
@@ -37,9 +38,11 @@ namespace AzureBlobStorageForeach
 
             //await UpdateMaterialPriceFromExcel(companyId, excelFilePath, worksheetNameUpdate);
 
-            await MarkMaterialAsDeletedFromExcel(companyId, excelFilePath, workSheetNameDelete);
+            //await MarkMaterialAsDeletedFromExcel(companyId, excelFilePath, workSheetNameDelete);
 
             //await UpdateServiceObjectNameFromExcel(companyId, excelFilePath, worksheetNameUpdate);
+
+            await UpdateContactPersonPhoneFromExcel(companyId, excelFilePath, workSheetNameContacts);
 
             //await ServiceObjectsInfo(companyId, excelFilePath, workSheetNameDelete);
 
@@ -348,6 +351,39 @@ namespace AzureBlobStorageForeach
                 if (cursor % 200 == 0)
                 {
                     Console.WriteLine($"{cursor:D4} / {serviceObjects.Count:D4}");
+                }
+            }
+        }
+
+        private static async Task UpdateContactPersonPhoneFromExcel(Guid companyId, string filePath, string worksheetName)
+        {
+            var excelClient = new ExcelClient();
+            var sqlClient = GetSqlClient();
+            var contactPeople = excelClient.LoadContactPeople(filePath, worksheetName);
+
+            var cursor = 0;
+            foreach (var contactPerson in contactPeople)
+            {
+                cursor++;
+
+                var fullPhone = $"{contactPerson.PhonePrefix}{contactPerson.PhoneNumber}";
+                if (!Utils.IsFullPhoneNumber(fullPhone))
+                {
+                    Console.WriteLine($"ERROR ID:{contactPerson.ExternalId} Phone:{contactPerson.PhonePrefix}-{contactPerson.PhoneNumber} Phone validation failed.");
+                    continue;
+                }
+                else
+                {
+                    var updatedCount = await sqlClient.UpdateContactPeopleAsync(contactPerson.PhonePrefix, contactPerson.PhoneNumber, contactPerson.ExternalId, companyId);
+                    if (!updatedCount)
+                    {
+                        Console.WriteLine($"ERROR ID:{contactPerson.ExternalId} Phone:{contactPerson.PhonePrefix}-{contactPerson.PhoneNumber} Updated records:{updatedCount}");
+                    }
+                }
+
+                if (cursor % 1000 == 0)
+                {
+                    Console.WriteLine($"{cursor:D4} / {contactPeople.Count():D4}");
                 }
             }
         }

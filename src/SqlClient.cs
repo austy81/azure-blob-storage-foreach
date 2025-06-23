@@ -455,5 +455,36 @@ WHERE c.TenantCode = '{tenantCode}'
             }
             _connection?.Dispose();
         }
+
+        internal async Task<bool> UpdateContactPeopleAsync(string phonePrefix, string phoneNumber, string externalId, Guid companyId)
+        {
+            var cmd = @"
+                update
+                    ContactPeople
+                set
+                    PhonePrefix = @phonePrefix,
+                    PhoneNumber = @phoneNumber,
+                    Modified = GETDATE()
+                from 
+                    ContactPeople c
+                where 
+                    c.ExternalId = @externalId
+                    and c.CompanyId = @companyId
+                ";
+
+            await OpenConnectionIfNeeded();
+
+            using (SqlCommand command = new SqlCommand(cmd, _connection))
+            {
+                command.Parameters.AddWithValue("@phonePrefix", phonePrefix);
+                command.Parameters.AddWithValue("@phoneNumber", phoneNumber);
+                command.Parameters.AddWithValue("@externalId", externalId);
+                command.Parameters.AddWithValue("@companyId", companyId);
+
+                var result = await command.ExecuteNonQueryAsync();
+
+                return result == 1;
+            }
+        }
     }
 }
